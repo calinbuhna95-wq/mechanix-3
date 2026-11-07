@@ -1,0 +1,430 @@
+
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MECHANIX 3D</title>
+
+<style>
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    overflow: hidden;
+    font-family: Arial;
+    background: #101827;
+    color: white;
+}
+
+#panel {
+    position: absolute;
+    top: 15px;
+    left: 15px;
+    width: 230px;
+    padding: 18px;
+    background: #1e293b;
+    border-radius: 14px;
+    z-index: 5;
+}
+
+h2 { color: #38bdf8; margin-top: 0; }
+
+button, select {
+    width: 100%;
+    padding: 11px;
+    margin: 5px 0;
+    border: none;
+    border-radius: 7px;
+    cursor: pointer;
+    background: #334155;
+    color: white;
+}
+
+button:hover { background: #0284c7; }
+
+#start { background: #16a34a; }
+#stop { background: #dc2626; }
+
+#info {
+    position: absolute;
+    bottom: 15px;
+    left: 15px;
+    background: #1e293b;
+    padding: 12px;
+    border-radius: 10px;
+    z-index: 5;
+}
+
+canvas { display: block; }
+</style>
+</head>
+
+<body>
+
+<div id="panel">
+    <h2>⚙ MECHANIX 3D</h2>
+
+    <label>Material:</label>
+    <select id="material">
+        <option value="wood">🪵 Scândură</option>
+        <option value="magnet">🧲 Magnet</option>
+        <option value="cardboard">📦 Carton</option>
+        <option value="toothpick">🥢 Scobitoare</option>
+        <option value="metal">🔩 Metal</option>
+    </select>
+
+    <label>Polul magnetului:</label>
+    <select id="pole">
+        <option value="N">N - Nord în stânga</option>
+        <option value="S">S - Sud în stânga</option>
+    </select>
+
+    <button onclick="addObject()">＋ Adaugă obiect</button>
+    <button onclick="deleteSelected()">🗑 Șterge ultimul obiect</button>
+
+    <hr>
+
+    <button id="start" onclick="running=true">
+        ▶ PORNEȘTE FIZICA
+    </button>
+
+    <button id="stop" onclick="running=false">
+        ⏸ OPREȘTE
+    </button>
+
+    <button onclick="resetWorld()">↻ Resetează lumea</button>
+
+    <p style="font-size:12px;color:#94a3b8">
+        Alege materialul și apasă Adaugă obiect.
+        Obiectul va apărea în laborator.
+    </p>
+</div>
+
+<div id="info">
+    🖱 Trage pentru a roti camera.<br>
+    Rotița mouse-ului = Zoom.
+</div>
+
+<script type="module">
+import * as THREE from
+'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
+
+import { OrbitControls } from
+'https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/controls/OrbitControls.js';
+
+import * as CANNON from
+'https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js';
+
+// SCENA 3D
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x101827);
+
+const camera = new THREE.PerspectiveCamera(
+    60, window.innerWidth/window.innerHeight, 0.1, 1000
+);
+
+camera.position.set(9, 8, 12);
+
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(window.innerWidth,window.innerHeight);
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera,renderer.domElement);
+controls.enableDamping = true;
+
+// LUMINI
+
+scene.add(new THREE.HemisphereLight(0xffffff,0x445566,2));
+
+const light = new THREE.DirectionalLight(0xffffff,3);
+light.position.set(5,10,5);
+light.castShadow = true;
+scene.add(light);
+
+// FIZICA
+
+const world = new CANNON.World({
+    gravity: new CANNON.Vec3(0,-9.82,0)
+});
+
+world.broadphase = new CANNON.SAPBroadphase(world);
+world.allowSleep = true;
+
+world.defaultContactMaterial.friction = 0.5;
+world.defaultContactMaterial.restitution = 0.1;
+
+// PODEA
+
+const floor = new THREE.Mesh(
+    new THREE.BoxGeometry(30,0.5,30),
+    new THREE.MeshStandardMaterial({color:0x334155})
+);
+
+floor.position.y = -0.25;
+floor.receiveShadow = true;
+scene.add(floor);
+
+const floorBody = new CANNON.Body({
+    mass:0,
+    shape:new CANNON.Box(new CANNON.Vec3(15,0.25,15)),
+    position:new CANNON.Vec3(0,-0.25,0)
+});
+
+world.addBody(floorBody);
+
+scene.add(new THREE.GridHelper(30,30));
+
+// OBIECTE
+
+let objects = [];
+let running = true;
+
+function addObject() {
+    const type = document.getElementById("material").value;
+    const pole = document.getElementById("pole").value;
+
+    let size = [2,0.25,0.5];
+    let color = 0xb87942;
+    let mass = 2;
+
+    if(type === "magnet") {
+        size = [1.5,0.35,0.45];
+        color = 0xef4444;
+        mass = 1;
+    }
+
+    if(type === "cardboard") {
+        size = [2,0.12,1];
+        color = 0xc4a77d;
+        mass = 0.5;
+    }
+
+    if(type === "toothpick") {
+        size = [1.5,0.08,0.08];
+        color = 0xd6a15c;
+        mass = 0.1;
+    }
+
+    if(type === "metal") {
+        size = [1,0.25,0.5];
+        color = 0x94a3b8;
+        mass = 3;
+    }
+
+    const geometry = new THREE.BoxGeometry(...size);
+
+    const material = new THREE.MeshStandardMaterial({
+        color:color,
+        metalness:type === "metal" ? 0.8 : 0.05,
+        roughness:0.6
+    });
+
+    const mesh = new THREE.Mesh(geometry,material);
+
+    mesh.castShadow = true;
+    mesh.position.set(
+        (Math.random()-0.5)*3,
+        3 + Math.random()*2,
+        (Math.random()-0.5)*3
+    );
+
+    scene.add(mesh);
+
+    const body = new CANNON.Body({
+        mass:mass,
+        shape:new CANNON.Box(
+            new CANNON.Vec3(size[0]/2,size[1]/2,size[2]/2)
+        ),
+        position:new CANNON.Vec3(
+            mesh.position.x,
+            mesh.position.y,
+            mesh.position.z
+        ),
+        linearDamping:0.03,
+        angularDamping:0.08
+    });
+
+    world.addBody(body);
+
+    const item = {
+        mesh,
+        body,
+        type,
+        pole,
+        size
+    };
+
+    objects.push(item);
+
+    // Etichete pentru polii magnetului
+
+    if(type === "magnet") {
+        createPoleLabel(item);
+    }
+}
+
+function createPoleLabel(item) {
+    const group = new THREE.Group();
+
+    const left = item.pole === "N" ? "N" : "S";
+    const right = item.pole === "N" ? "S" : "N";
+
+    function label(text,x,color) {
+        const canvas = document.createElement("canvas");
+        canvas.width = 128;
+        canvas.height = 128;
+
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = color;
+        ctx.font = "bold 80px Arial";
+        ctx.textAlign = "center";
+        ctx.fillText(text,64,90);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        const sprite = new THREE.Sprite(
+            new THREE.SpriteMaterial({map:texture})
+        );
+
+        sprite.position.x = x;
+        sprite.position.y = 0.35;
+        sprite.scale.set(0.5,0.5,1);
+        group.add(sprite);
+    }
+
+    label(left,-0.65, "#ffffff");
+    label(right,0.65, "#ffffff");
+
+    item.mesh.add(group);
+}
+
+// MAGNETISM
+
+function magnetism() {
+    const magnets = objects.filter(o => o.type === "magnet");
+
+    for(let i=0;i<magnets.length;i++) {
+        for(let j=i+1;j<magnets.length;j++) {
+
+            const a = magnets[i];
+            const b = magnets[j];
+
+            const qa = a.body.quaternion;
+            const qb = b.body.quaternion;
+
+            for(let sideA of [-1,1]) {
+                for(let sideB of [-1,1]) {
+
+                    const poleA = sideA === -1 ? a.pole :
+                        (a.pole === "N" ? "S" : "N");
+
+                    const poleB = sideB === -1 ? b.pole :
+                        (b.pole === "N" ? "S" : "N");
+
+                    const offsetA = new CANNON.Vec3(
+                        sideA * 0.75,0,0
+                    );
+
+                    const offsetB = new CANNON.Vec3(
+                        sideB * 0.75,0,0
+                    );
+
+                    qa.vmult(offsetA,offsetA);
+                    qb.vmult(offsetB,offsetB);
+
+                    const posA = a.body.position.vadd(offsetA);
+                    const posB = b.body.position.vadd(offsetB);
+
+                    const direction = posB.vsub(posA);
+                    const distance = direction.length();
+
+                    if(distance < 0.15 || distance > 6) continue;
+
+                    direction.normalize();
+
+                    const samePole = poleA === poleB;
+
+                    // Forță simplificată de atracție/repulsie
+                    const strength = Math.min(
+                        18,
+                        3 / (distance*distance)
+                    );
+
+                    const sign = samePole ? -1 : 1;
+
+                    const force = direction.scale(
+                        strength * sign
+                    );
+
+                    a.body.applyForce(force,offsetA);
+
+                    b.body.applyForce(
+                        force.negate(),
+                        offsetB
+                    );
+                }
+            }
+        }
+    }
+}
+
+// ȘTERGERE
+
+function deleteSelected() {
+    if(objects.length === 0) return;
+
+    const item = objects.pop();
+
+    scene.remove(item.mesh);
+    world.removeBody(item.body);
+}
+
+// RESET
+
+function resetWorld() {
+    for(const item of objects) {
+        scene.remove(item.mesh);
+        world.removeBody(item.body);
+    }
+
+    objects = [];
+}
+
+// ANIMAȚIE
+
+const clock = new THREE.Clock();
+
+function animate() {
+    requestAnimationFrame(animate);
+
+    const delta = Math.min(clock.getDelta(),0.05);
+
+    if(running) {
+        magnetism();
+        world.step(1/60,delta,3);
+    }
+
+    for(const item of objects) {
+        item.mesh.position.copy(item.body.position);
+        item.mesh.quaternion.copy(item.body.quaternion);
+    }
+
+    controls.update();
+    renderer.render(scene,camera);
+}
+
+animate();
+
+// REDIMENSIONARE
+
+window.addEventListener("resize",()=>{
+    camera.aspect = window.innerWidth/window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth,window.innerHeight);
+});
+
+</script>
+</body>
+</html>
